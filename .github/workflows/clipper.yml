@@ -45,6 +45,11 @@ jobs:
           pattern = r'- \[[xX]\] .*?(?:\r?\n)+\s*- URL: (https?://[^\s]+)'
           urls = re.findall(pattern, body, re.DOTALL)
 
+          # Debug log for artifact
+          os.makedirs("/tmp/debug", exist_ok=True)
+          import json
+          json.dump({"parsed_urls": urls, "body_length": len(body)}, open("/tmp/debug/capture_input.json", "w"), indent=2)
+
           if not urls:
               print("No articles selected.")
               with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
@@ -125,6 +130,14 @@ jobs:
               git push origin main && break || sleep 10
             done
           fi
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipper-debug-${{ github.event.issue.number }}
+          path: /tmp/debug/
+          retention-days: 7
 
       - name: Notify via Telegram (optional)
         if: success() && steps.capture.outputs.skip != 'true'

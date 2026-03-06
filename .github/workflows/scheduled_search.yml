@@ -62,10 +62,22 @@ jobs:
               except Exception as e:
                   print(f"Error processing '{topic}': {e}")
 
-          # Save results for notification step
+          # Save results for notification step and debug
+          import json as _json
+          os.makedirs("/tmp/debug", exist_ok=True)
+          _json.dump({"topics": topics, "profile": profile, "issue_urls": issue_urls},
+                     open("/tmp/debug/search_results.json", "w"), indent=2)
           with open("/tmp/issue_urls.txt", "w") as f:
               f.write("\n".join(issue_urls))
           PYEOF
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-debug-${{ github.run_number }}
+          path: /tmp/debug/
+          retention-days: 7
 
       - name: Notify via Telegram (optional)
         if: always()
