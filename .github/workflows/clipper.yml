@@ -1,0 +1,132 @@
+name: Article Clipper
+
+on:
+  issues:
+    types: [closed]
+
+jobs:
+  capture:
+    if: contains(github.event.issue.labels.*.name, 'pending-capture')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install requests trafilatura
+
+      - name: Capture Selected Articles
+        id: capture
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re, hashlib, datetime, sys
+          import trafilatura
+
+          body = os.environ.get('ISSUE_BODY', '')
+          pattern = r'- \[[xX]\] .*?(?:\r?\n)+\s*- URL: (https?://[^\s]+)'
+          urls = re.findall(pattern, body, re.DOTALL)
+
+          if not urls:
+              print("No articles selected.")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("skip=true\n")
+              sys.exit(0)
+
+          os.makedirs("captures", exist_ok=True)
+          capture_count = 0
+
+          for url in urls:
+              print(f"Processing: {url}")
+              url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+
+              try:
+                  downloaded = trafilatura.fetch_url(url)
+                  metadata = trafilatura.metadata.extract_metadata(downloaded) if downloaded else None
+                  content = trafilatura.extract(downloaded, output_format="markdown") if downloaded else None
+
+                  if not content or len(content) < 200:
+                      # Fallback: Jina Reader
+                      print(f"  Trafilatura failed, trying Jina Reader...")
+                      import requests
+                      resp = requests.get(f"https://r.jina.ai/{url}",
+                                          headers={"X-Return-Format": "markdown"}, timeout=30)
+                      if resp.status_code == 200 and len(resp.text) > 200:
+                          content = resp.text
+                          title_match = re.search(r'^# (.*)', content, re.M)
+                          page_title = title_match.group(1) if title_match else "Untitled"
+                          article_date = datetime.datetime.now().strftime("%Y-%m-%d")
+                      else:
+                          content = None
+                  else:
+                      page_title = metadata.title if metadata and metadata.title else "Untitled"
+                      article_date = metadata.date if metadata and metadata.date else datetime.datetime.now().strftime("%Y-%m-%d")
+
+                  if not content:
+                      print(f"  Skipping {url}: no content extracted.")
+                      continue
+
+                  if 'T' in article_date:
+                      article_date = article_date.split('T')[0]
+
+                  header = f"# {page_title}\n\n"
+                  header += f"> Source: {url}\n"
+                  header += f"> Captured: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+                  header += "---\n\n"
+
+                  filename = f"captures/clip_{article_date.replace('-','')}_{url_hash}.md"
+                  with open(filename, "w", encoding="utf-8") as f:
+                      f.write(header + content)
+                  capture_count += 1
+                  print(f"  ✅ Saved: {filename}")
+
+              except Exception as e:
+                  print(f"  ⚠️ Error: {e}")
+
+          if capture_count == 0:
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("skip=true\n")
+          else:
+              print(f"\nTotal captured: {capture_count}")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("skip=false\n")
+          PYEOF
+
+      - name: Commit and Push
+        if: steps.capture.outputs.skip != 'true'
+        run: |
+          git config user.name "issueops-digest[bot]"
+          git config user.email "bot@issueops-digest"
+          git add captures/
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "capture: articles from issue #${{ github.event.issue.number }}"
+            for i in {1..3}; do
+              git pull --rebase origin main --autostash || true
+              git push origin main && break || sleep 10
+            done
+          fi
+
+      - name: Notify via Telegram (optional)
+        if: success() && steps.capture.outputs.skip != 'true'
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && exit 0
+          MSG="✅ Capture complete: ${{ github.event.issue.title }}"
+          curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            -d "chat_id=$CHAT_ID&text=$MSG"

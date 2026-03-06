@@ -1,0 +1,45 @@
+# issueops-digest configuration
+
+# Search topics for scheduled (cron) mode
+# Each topic will generate a separate GitHub Issue with results
+topics:
+  - "AI agent framework"
+  - "台積電 供應鏈"
+
+# Weight profiles: default, news, research
+# - default: balanced
+# - news: recency matters more
+# - research: evergreen content gets higher scores
+weight_profile: default
+
+# Domains that get bonus authority scores (0-15)
+# Higher score = more trusted source
+authority_domains:
+  bloomberg.com: 15
+  wsj.com: 15
+  reuters.com: 12
+  nikkei.com: 12
+  technews.tw: 10
+  bnext.com.tw: 8
+  ithome.com.tw: 8
+
+# Deep content domains (full-text fetched via Jina Reader)
+deep_domains:
+  - substack.com
+  - medium.com
+  - matters.town
+  - mirror.xyz
+  - vocus.cc
+
+# Social media domains (search-summary strategy)
+social_domains:
+  - twitter.com
+  - x.com
+  - reddit.com
+
+# API quota tracking (CLI mode only)
+quotas:
+  brave_monthly: 1000
+  tavily_monthly: 1000
+  gemini_daily: 1500
+  warn_at_percent: 80

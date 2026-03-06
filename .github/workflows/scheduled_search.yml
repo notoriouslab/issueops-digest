@@ -1,0 +1,81 @@
+name: Scheduled Search
+
+on:
+  schedule:
+    # Runs daily at 08:00 UTC (adjust to your timezone)
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Searches from config.yaml
+        env:
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          python3 << 'PYEOF'
+          import yaml
+
+          with open("config.yaml", "r") as f:
+              config = yaml.safe_load(f)
+
+          topics = config.get("topics", [])
+          profile = config.get("weight_profile", "default")
+
+          if not topics:
+              print("No topics configured in config.yaml")
+              exit(0)
+
+          from web_digest import WebDigest
+          digest = WebDigest(weight_profile=profile)
+
+          issue_urls = []
+          for topic in topics:
+              print(f"\n{'='*50}")
+              print(f"Topic: {topic}")
+              print(f"{'='*50}")
+              try:
+                  result = digest.run_digest(topic)
+                  print(result)
+                  if result.startswith("http"):
+                      issue_urls.append(result)
+              except Exception as e:
+                  print(f"Error processing '{topic}': {e}")
+
+          # Save results for notification step
+          with open("/tmp/issue_urls.txt", "w") as f:
+              f.write("\n".join(issue_urls))
+          PYEOF
+
+      - name: Notify via Telegram (optional)
+        if: always()
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -z "$TOKEN" ] || [ -z "$CHAT_ID" ] && echo "Telegram not configured, skipping." && exit 0
+          URLS=$(cat /tmp/issue_urls.txt 2>/dev/null || echo "")
+          [ -z "$URLS" ] && exit 0
+          MSG="📬 New issues ready for review:%0A${URLS//$'\n'/%0A}"
+          curl -s -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
+            -d "chat_id=$CHAT_ID&text=$MSG&disable_web_page_preview=true"
