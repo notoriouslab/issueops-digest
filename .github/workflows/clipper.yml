@@ -65,7 +65,7 @@ jobs:
 
               try:
                   downloaded = trafilatura.fetch_url(url)
-                  metadata = trafilatura.metadata.extract_metadata(downloaded) if downloaded else None
+                  metadata = trafilatura.extract_metadata(downloaded) if downloaded else None
                   content = trafilatura.extract(downloaded, output_format="markdown") if downloaded else None
 
                   if not content or len(content) < 200:
