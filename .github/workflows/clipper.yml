@@ -61,18 +61,24 @@ jobs:
           os.makedirs("captures", exist_ok=True)
           capture_count = 0
 
-          # SSRF protection: skip private/internal URLs
-          import ipaddress
+          # SSRF protection: resolve DNS then check IP (blocks rebinding attacks)
+          import ipaddress, socket
           from urllib.parse import urlparse as _urlparse
           def _is_safe_url(u):
               try:
                   host = _urlparse(u).hostname
                   if not host:
                       return False
-                  ip = ipaddress.ip_address(host)
-                  return ip.is_global
-              except ValueError:
-                  return True  # hostname (not IP) — allow
+                  if host in ('localhost', 'metadata.google.internal'):
+                      return False
+                  resolved = socket.getaddrinfo(host, None)
+                  for _, _, _, _, addr in resolved:
+                      ip = ipaddress.ip_address(addr[0])
+                      if not ip.is_global:
+                          return False
+                  return True
+              except Exception:
+                  return False  # fail-closed
 
           for url in urls:
               if not _is_safe_url(url):
