@@ -6,7 +6,7 @@ import os
 import json
 import re
 import sys
-import time
+
 import requests
 import yaml
 from datetime import datetime, timedelta, timezone
@@ -81,7 +81,7 @@ def _check_quota_preflight():
     quotas = CONFIG.get("quotas", {})
     if not quotas:
         return
-    hard_pct = quotas.get("hard_limit_percent", 100)
+    hard_pct = min(quotas.get("hard_limit_percent", 100), 100)
     for api_name in ["brave", "tavily", "gemini"]:
         count, limit = _get_current_usage(api_name)
         if limit <= 0:
@@ -290,11 +290,17 @@ class WebDigest:
         from google.genai import types
         import difflib
 
-        # Physical dedup
+        # Physical dedup (title similarity + URL netloc+path)
+        from urllib.parse import urlparse as _urlparse
         unique = []
+        seen_urls = set()
         for res in results:
+            url_key = _urlparse(res['link'])._replace(scheme='', query='', fragment='').geturl()
+            if url_key in seen_urls:
+                continue
             if not any(difflib.SequenceMatcher(None, res['title'], u['title']).ratio() > 0.8 for u in unique):
                 unique.append(res)
+                seen_urls.add(url_key)
 
         target = unique[:50]
 
