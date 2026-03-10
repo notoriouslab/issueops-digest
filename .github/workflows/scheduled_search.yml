@@ -43,13 +43,14 @@ jobs:
           profile = config.get("weight_profile", "default")
 
           if not topics:
-              print("No topics configured in config.yaml")
-              exit(0)
+              print("ERROR: No topics configured in config.yaml")
+              exit(1)
 
           from web_digest import WebDigest
           digest = WebDigest(weight_profile=profile)
 
           issue_urls = []
+          errors = []
           for topic in topics:
               print(f"\n{'='*50}")
               print(f"Topic: {topic}")
@@ -61,6 +62,13 @@ jobs:
                       issue_urls.append(result)
               except Exception as e:
                   print(f"Error processing '{topic}': {e}")
+                  errors.append(topic)
+
+          if errors and not issue_urls:
+              print(f"\nERROR: All topics failed: {errors}")
+              exit(1)
+          elif errors:
+              print(f"\nWARNING: Some topics failed: {errors}")
 
           # Save results for notification step and debug
           import json as _json

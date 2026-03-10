@@ -1,0 +1,20 @@
+[project]
+name = "issueops-digest"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.flake8]
+max-line-length = 120
+exclude = [".git", "__pycache__", "captures"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

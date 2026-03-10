@@ -32,7 +32,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install requests trafilatura pyyaml
+        run: pip install -r requirements.txt
 
       - name: Capture Selected Articles
         id: capture
