@@ -51,3 +51,23 @@ quotas:
   gemini_daily: 1500
   warn_at_percent: 80
   hard_limit_percent: 100
+
+# --- MOPS Material Announcement Watcher ---
+# Stocks to monitor for 重大訊息 on mops.twse.com.tw
+mops_watchlist:
+  - code: "2881"
+    name: "富邦金"
+  - code: "2882"
+    name: "國泰金"
+  - code: "2883"
+    name: "開發金"
+  - code: "2885"
+    name: "元大金"
+  - code: "2886"
+    name: "兆豐金"
+  - code: "2888"
+    name: "新光金"
+  - code: "2889"
+    name: "國票金"
+  - code: "2891"
+    name: "中信金"

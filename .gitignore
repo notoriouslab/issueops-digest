@@ -5,6 +5,7 @@
 
 # Usage tracking
 .usage_stats.json
+.mops_seen.json
 
 # Python
 __pycache__/

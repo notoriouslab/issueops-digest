@@ -1,0 +1,44 @@
+name: MOPS Watcher
+
+on:
+  schedule:
+    # Weekdays 08:00-21:00 TW time (UTC+8), every hour
+    # UTC 00:00-13:00 = TW 08:00-21:00
+    - cron: '0 0-13 * * 1-5'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: pip install requests pyyaml python-dotenv
+
+      - name: Restore seen cache
+        uses: actions/cache@v4
+        with:
+          path: .mops_seen.json
+          key: mops-seen-${{ github.run_number }}
+          restore-keys: mops-seen-
+
+      - name: Run MOPS Watcher
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 mops_watcher.py
+
+      - name: Save seen cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .mops_seen.json
+          key: mops-seen-${{ github.run_number }}
