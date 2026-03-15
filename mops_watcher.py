@@ -128,22 +128,62 @@ def fetch_mops(code: str, year: int | None = None) -> list[dict]:
     items = result.get("data") or []
     company_name = result.get("companyAbbreviation", code)
 
-    # Each item: [code, name, date, time, subject, {detail}]
+    # Each item: [code, name, date, time, subject, {detail API params}]
     announcements = []
     for item in items:
         if not isinstance(item, list) or len(item) < 5:
             continue
         subject = item[4].replace("\r\n", " ").replace("\n", " ").strip()
+        detail_params = item[5] if len(item) > 5 and isinstance(item[5], dict) else None
         announcements.append({
             "code": item[0],
             "name": item[1] or company_name,
             "date": item[2],
             "time": item[3],
             "subject": subject,
+            "detail_params": detail_params,
         })
 
     logger.info("[MOPS] %s %s: %d announcements", code, company_name, len(announcements))
     return announcements
+
+
+def fetch_detail(detail_params: dict | None) -> str:
+    """Fetch announcement detail text from MOPS, return first 500 chars."""
+    if not detail_params:
+        return ""
+    api_name = detail_params.get("apiName", "t05st01_detail")
+    params = detail_params.get("parameters", {})
+    if not params:
+        return ""
+
+    try:
+        resp = requests.post(
+            f"{MOPS_API}{api_name}",
+            json=params,
+            headers=API_HEADERS,
+            timeout=10,
+            verify=False,
+        )
+        if resp.status_code != 200:
+            return ""
+        data = resp.json()
+        if data.get("code") != 200:
+            return ""
+
+        # Detail data is in result.data[0], last element is the full text
+        rows = (data.get("result") or {}).get("data") or []
+        if not rows or not isinstance(rows[0], list):
+            return ""
+        full_text = rows[0][-1]  # Last field is the detail body
+        # Clean up and truncate
+        full_text = full_text.replace("\r\n", "\n").strip()
+        if len(full_text) > 50:
+            full_text = full_text[:50] + "..."
+        return full_text
+    except Exception as e:
+        logger.debug("[MOPS] Detail fetch failed: %s", e)
+        return ""
 
 
 def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
@@ -167,7 +207,7 @@ def send_telegram(bot_token: str, chat_id: str, message: str) -> bool:
 
 
 def format_announcement(ann: dict) -> str:
-    """Format a single announcement for Telegram."""
+    """Format a single announcement for Telegram with detail excerpt."""
     severity = _classify_severity(ann["subject"])
     icon = {"high": "\U0001f534", "medium": "\U0001f7e1", "low": "\u2139\ufe0f"}[severity]
 
@@ -177,14 +217,18 @@ def format_announcement(ann: dict) -> str:
     time_str = ann.get("time", "")
     subject = ann["subject"]
 
-    mops_url = f"https://mops.twse.com.tw/mops/#/web/t05st01?companyId={code}"
+    # Fetch detail content
+    detail = fetch_detail(ann.get("detail_params"))
 
     lines = [
         f"{icon} <b>{code} {name}</b>",
         f"\U0001f4c5 {date} {time_str}",
         f"\U0001f4cb {subject}",
-        f'\U0001f517 <a href="{mops_url}">MOPS \u67e5\u8a62</a>',
     ]
+    if detail:
+        safe_detail = (detail.replace("&", "&amp;")
+                       .replace("<", "&lt;").replace(">", "&gt;"))
+        lines.append(f"<i>{safe_detail}</i>")
     return "\n".join(line for line in lines if line)
 
 
@@ -237,8 +281,12 @@ def run_watcher(dry_run: bool = False) -> dict:
 
     seen = _load_seen()
     seen_hashes = set(seen.get("hashes", []))
+    is_first_run = seen.get("last_run") is None
     new_count = 0
     total_fetched = 0
+
+    if is_first_run:
+        logger.info("First run — building baseline (no notifications)")
 
     for stock in watchlist:
         code = str(stock.get("code", ""))
@@ -257,6 +305,10 @@ def run_watcher(dry_run: bool = False) -> dict:
             seen_hashes.add(h)
             new_count += 1
 
+            # First run: silently record all existing announcements
+            if is_first_run:
+                continue
+
             msg = format_announcement(ann)
             logger.info("[NEW] %s: %s", code, ann["subject"][:60])
 
@@ -269,6 +321,9 @@ def run_watcher(dry_run: bool = False) -> dict:
 
         # Be polite to MOPS server
         time.sleep(1)
+
+    if is_first_run:
+        logger.info("Baseline built: %d announcements recorded", new_count)
 
     # Persist seen hashes (cap at 5000 to avoid unbounded growth)
     all_hashes = list(seen_hashes)
