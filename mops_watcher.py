@@ -86,14 +86,17 @@ def _hash_announcement(code: str, date: str, time_str: str, subject: str) -> str
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def fetch_mops(code: str, year: int | None = None) -> list[dict]:
+def fetch_mops(code: str, year: int | None = None, market: str = "sii") -> list[dict]:
     """Fetch material announcements for a stock code via MOPS JSON API.
 
-    Uses t05st01 (歷史重大訊息) endpoint.
+    market: "sii" (上市), "otc" (上櫃), "emerging" (興櫃)
     Returns list of dicts: {code, name, date, time, subject}
     """
     if year is None:
         year = _roc_year()
+
+    # 上市/上櫃 use t05st01, 興櫃 uses t05st03
+    endpoint = "t05st03" if market == "emerging" else "t05st01"
 
     payload = {
         "companyId": code,
@@ -105,7 +108,7 @@ def fetch_mops(code: str, year: int | None = None) -> list[dict]:
 
     try:
         resp = requests.post(
-            f"{MOPS_API}t05st01",
+            f"{MOPS_API}{endpoint}",
             json=payload,
             headers=API_HEADERS,
             timeout=15,
@@ -117,6 +120,9 @@ def fetch_mops(code: str, year: int | None = None) -> list[dict]:
 
         data = resp.json()
         if data.get("code") != 200:
+            # Fallback: try emerging endpoint if sii/otc failed
+            if endpoint == "t05st01":
+                return fetch_mops(code, year, market="emerging")
             logger.warning("[MOPS] API error for %s: %s", code, data.get("message"))
             return []
 
@@ -127,6 +133,11 @@ def fetch_mops(code: str, year: int | None = None) -> list[dict]:
     result = data.get("result") or {}
     items = result.get("data") or []
     company_name = result.get("companyAbbreviation", code)
+    # t05st03 returns name differently
+    if not company_name or company_name == code:
+        name_obj = result.get("companyAbbreviation") or {}
+        if isinstance(name_obj, dict):
+            company_name = name_obj.get("value", code)
 
     # Each item: [code, name, date, time, subject, {detail API params}]
     announcements = []

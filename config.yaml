@@ -71,3 +71,5 @@ mops_watchlist:
     name: "國票金"
   - code: "2891"
     name: "中信金"
+  - code: "6038"
+    name: "街口電支"
