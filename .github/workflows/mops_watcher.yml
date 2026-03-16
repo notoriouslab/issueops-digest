@@ -2,9 +2,9 @@ name: MOPS Watcher
 
 on:
   schedule:
-    # Weekdays 08:00-21:00 TW time (UTC+8), every hour
-    # UTC 00:00-13:00 = TW 08:00-21:00
-    - cron: '0 0-13 * * 1-5'
+    # Weekdays 08:47-21:47 TW time (UTC+8), every hour
+    # UTC 00:47-13:47 = TW 08:47-21:47
+    - cron: '47 0-13 * * 1-5'
   workflow_dispatch:  # Manual trigger
 
 jobs:
