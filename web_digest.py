@@ -317,9 +317,22 @@ class WebDigest:
 
     @staticmethod
     def _sanitize_for_prompt(text: str) -> str:
-        """Strip control chars and obvious prompt injection patterns from external text."""
+        """Strip control chars and prompt injection patterns from external text.
+
+        Covers ATR-2026-002 layers: HTML comment injection, zero-width chars,
+        model-specific tokens, hidden instruction tags, and agent-addressing directives.
+        """
+        # Layer 0: ASCII control chars
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
-        # Collapse sequences that look like prompt separators / instruction overrides
+        # Layer 1: Zero-width and bidirectional control characters
+        text = re.sub(r'[\u200b\u200c\u200d\ufeff\u2060\u180e\u200e\u200f\u202a-\u202e\u2066-\u2069]', '', text)
+        # Layer 2: HTML comments (may carry injection payloads)
+        text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+        # Layer 3: Model-specific special tokens
+        text = re.sub(r'(?i)(\[INST\]|\[/INST\]|\[SYSTEM\]|\[/SYSTEM\]|<\|im_start\|>|<\|im_end\|>|<\|endoftext\|>|<\|system\|>|<\|user\|>|<\|assistant\|>|<<SYS>>|<</SYS>>|<\|begin_of_text\|>|<\|eot_id\|>)', '', text)
+        # Layer 4: Hidden instruction XML tags
+        text = re.sub(r'(?i)<\s*(hidden|invisible|secret|private|internal|covert)\s*[-_]?(instruction|directive|command|message|note|order)\s*>.*?</\s*\1\s*[-_]?\2\s*>', '', text, flags=re.DOTALL)
+        # Layer 5: Collapse prompt separator sequences
         text = re.sub(r'-{5,}', '---', text)
         text = re.sub(r'={5,}', '===', text)
         return text
